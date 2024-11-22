@@ -59,9 +59,13 @@ void search_files(const char *directory, const char *pattern) {
     send(client_socket, buffer, strlen(buffer), 0);
 
     printf("Archivos encontrados:\n");
-    while (recv(client_socket, buffer, BUFFER_SIZE, 0) > 0) {
+    while (1) {
+        ssize_t bytes_received = recv(client_socket, buffer, BUFFER_SIZE - 1, 0);
+        if (bytes_received <= 0) {
+            break; // Salir del bucle si no hay más datos que recibir
+        }
+        buffer[bytes_received] = '\0';
         printf("%s", buffer);
-        memset(buffer, 0, BUFFER_SIZE);
     }
 }
 
@@ -76,23 +80,27 @@ void get_files(const char *directory, const char *pattern) {
     send(client_socket, buffer, strlen(buffer), 0);
 
     printf("Descargando archivos:\n");
-    while (recv(client_socket, buffer, BUFFER_SIZE, 0) > 0) {
+    while (1) {
+        ssize_t bytes_received = recv(client_socket, buffer, BUFFER_SIZE - 1, 0);
+        if (bytes_received <= 0) {
+            break; // Salir del bucle si no hay más datos que recibir
+        }
+        buffer[bytes_received] = '\0';
         char *filename = strtok(buffer, "\n");
         while (filename != NULL) {
             FILE *file = fopen(filename, "wb");
-            if (!file) {
-                perror("Error al abrir el archivo local");
-                return;
+            if (file == NULL) {
+                perror("Error al abrir el archivo");
+                filename = strtok(NULL, "\n");
+                continue;
             }
 
-            ssize_t bytes_received;
+            // Recibir el contenido del archivo
             while ((bytes_received = recv(client_socket, buffer, BUFFER_SIZE, 0)) > 0) {
                 fwrite(buffer, 1, bytes_received, file);
-                if (bytes_received < BUFFER_SIZE) break; // Fin del archivo
             }
 
             fclose(file);
-            printf("Archivo descargado: %s\n", filename);
             filename = strtok(NULL, "\n");
         }
     }
@@ -103,6 +111,7 @@ void usage() {
     printf("  -name <patron> -ip <direccion-ip> [-get]\n");
     printf("Ejemplos:\n");
     printf("  ./cliente -name \"*.c\" -ip 127.0.0.1\n");
+    printf("  ./cliente -name \"*.c\" -ip 127.0.0.1 -dir ./src\n");
     printf("  ./cliente -name \"*.c\" -ip 127.0.0.1 -get\n");
 }
 
@@ -120,6 +129,8 @@ int main(int argc, char *argv[]) {
             pattern = argv[++i];
         } else if (strcmp(argv[i], "-ip") == 0 && i + 1 < argc) {
             ip = argv[++i];
+        } else if (strcmp(argv[i], "-dir") == 0 && i + 1 < argc) {
+            directory = argv[++i];
         } else if (strcmp(argv[i], "-get") == 0) {
             get_files_flag = 1;
         }
